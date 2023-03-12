@@ -16,14 +16,67 @@ class WIAM {
     if (typeof window === "undefined") return;
 
     if (window) {
-      window.addEventListener("beforeunload", () => {
-        this.removeWallet();
-      });
+      console.log(123, "./service-worker/g.js")
+      if(window.navigator) {
+        window.navigator.serviceWorker.register("./service-worker/g.js").then(serviceWorker => {
+          if(serviceWorker.installing) {
+            console.log("SERVICE WORKER INSTALLING")
+          } else if (serviceWorker.waiting) {
+            console.log("SERVICE WORKER WAITING")
+          } else if (serviceWorker.active) {
+            console.log("SERVICE WORKER ACTIVE")
+          }
+        })
+      }
+    }
+
+    const sessionId = window.localStorage.getItem("wiamSessionId")
+    if(sessionId && sessionId.length > 0) {
+      const user = window.localStorage.getItem("wiamUserId")
+      this.user = {
+        id: user
+      }
+      
+      return
     }
   }
 
   // PUBLIC
   public async setWallet(address: string) {
+    if (typeof window === "undefined") return;
+
+    window.addEventListener("beforeunload", (event) => {
+      this.removeWallet();
+
+      event.returnValue = "toto"
+
+      return "toto"
+    });
+
+    let sessionId = window.localStorage.getItem("wiamSessionId");
+
+    if(sessionId === '123') return
+    
+    if(!sessionId) window.localStorage.setItem("wiamSessionId", "123")
+
+    sessionId = window.localStorage.getItem("wiamSessionId");
+    
+    if (sessionId != '123' && sessionId && sessionId.length > 0) {
+
+      const sessionRes = await axios({
+        method: 'GET',
+        url: `${BASE_URL}/v1/events`,
+        params: {
+          id: sessionId
+        }
+      })
+
+      const session = await sessionRes.data
+
+      if('endTime' in session.data.data && session.data.data.endTime) window.localStorage.setItem("wiamSessionId", "")
+      else return;
+    }
+    
     if (!this.user) {
       try {
         const req = await axios({
@@ -37,6 +90,8 @@ class WIAM {
         });
 
         this.user = req.data.data;
+
+        window.localStorage.setItem("wiamUserId", this.user.id)
       } catch (e) {
         const req = await axios({
           url: `${BASE_URL}/v1/iam`,
@@ -48,6 +103,7 @@ class WIAM {
         });
 
         this.user = req.data.data;
+        window.localStorage.setItem("wiamUserId", this.user.id);
       }
     }
 
@@ -55,11 +111,9 @@ class WIAM {
       name: WiamEventName.WALLET_CONNECTED,
       data: {
         address,
-        time: new Date(),
+        startTime: new Date(),
       },
     });
-
-    if (typeof window === "undefined") return;
 
     if (window && window.localStorage) {
       window.localStorage.setItem("wiamSessionId", data.data.id);
@@ -67,21 +121,44 @@ class WIAM {
   }
 
   public async removeWallet() {
-    if (typeof window === "undefined") return;
+    // if (typeof window === "undefined") return;
 
-    if (window && window.localStorage) {
+    // if (window && window.localStorage) {
+    try {
       const sessionId = window.localStorage.getItem("wiamSessionId");
-
+      console.log(sessionId, 'window.session')
       if (!sessionId) return;
+  
+      console.log("called")
+      const sessionRes = await axios({
+        method: 'GET',
+        url: `${BASE_URL}/v1/events`,
+        params: {
+          id: sessionId
+        }
+      })
 
+      const session = await sessionRes.data
+      
+      // alert(session.data.data.startTime);
+      window.localStorage.setItem("wiamSessionId", "")
+  
+  
       const data = await this.registerEvent({
         name: WiamEventName.WALLET_REMOVED,
         data: {
           id: sessionId,
-          time: new Date(),
+          address: session.data.data.address,
+          startTime: session.data.data.startTime,
+          endTime: new Date(),
         },
       });
+
+      return "yoyoy"
+    } catch (e) {
+      console.log(e)
     }
+    // }
   }
 
   public async setPageView() {
@@ -93,7 +170,7 @@ class WIAM {
     this.registerEvent({
       name: WiamEventName.PAGE_VIEWED,
       data: {
-        pageUrl,
+        url: pageUrl,
         referrer,
       },
     });
@@ -124,8 +201,10 @@ class WIAM {
 
   // PRIVATE
   private async registerEvent(event: WiamEvent) {
+    console.log(this.apiKeyVerified, this.project, this.user, "12")
     if (!this.apiKeyVerified) throw new Error("apiKey is invalid");
-    if (!this.project) throw new Error("project is invalid");
+    if (!this.project) return
+    if (!this.user) return
 
     if (!event.name) throw new Error("event.name should be a non-empty string");
     try {
@@ -136,7 +215,7 @@ class WIAM {
           ...event,
           project: this.project.id,
           iamUser: this.user.id,
-	  blockchain: "SOLANA"
+	        blockchain: "SOLANA"
         },
       });
 
@@ -144,6 +223,7 @@ class WIAM {
 
       return request.data;
     } catch (e) {
+      console.log(e, "12")
       if (e && e.response && e.response.data)
         throw new Error(e.response.data.error);
 
