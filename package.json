@@ -1,7 +1,7 @@
 {
   "name": "iam-react",
-  "version": "1.0.22",
-  "main": "dist/index.ts",
+  "version": "1.0.23",
+  "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "MIT",
   "devDependencies": {
