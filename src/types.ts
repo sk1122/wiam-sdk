@@ -9,3 +9,8 @@ export interface WiamEvent {
 	name: WiamEventName
 	data: any
 }
+
+export interface Opts {
+	serviceWorker: string
+	recordPageViews: boolean
+}

@@ -1,24 +1,26 @@
 import axios from "axios";
 import { BASE_URL } from "./config";
-import { WiamEvent, WiamEventName } from "./types";
+import { Opts, WiamEvent, WiamEventName } from "./types";
 
 class WIAM {
   private apiKey = "";
   private project: any = undefined;
   private user: any = undefined;
   private apiKeyVerified = false;
+  private options: Opts = {} as Opts
+  private recordingPageViews = false
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, options?: Opts) {
+    this.options = options
     this.apiKey = apiKey;
 
-    this.validateApiKey();
+    this.validateApiKey(apiKey);
 
     if (typeof window === "undefined") return;
 
-    if (window) {
-      console.log(123, "./service-worker/g.js")
-      if(window.navigator) {
-        window.navigator.serviceWorker.register("./service-worker/g.js").then(serviceWorker => {
+    if(options && options.serviceWorker) {
+      if(window && window.navigator) {
+        window.navigator.serviceWorker.register(`/${options.serviceWorker}`).then(serviceWorker => {
           if(serviceWorker.installing) {
             console.log("SERVICE WORKER INSTALLING")
           } else if (serviceWorker.waiting) {
@@ -27,7 +29,14 @@ class WIAM {
             console.log("SERVICE WORKER ACTIVE")
           }
         })
+      } else {
+        throw new Error("execute this code in a browser environment")
       }
+    }
+
+    if(options && options.recordPageViews) {
+      if(window) this.autoPageViews()
+      else throw new Error("execute this code in a browser environment")
     }
 
     const sessionId = window.localStorage.getItem("wiamSessionId")
@@ -53,16 +62,15 @@ class WIAM {
       return "toto"
     });
 
-    let sessionId = window.localStorage.getItem("wiamSessionId");
+    let running = window.localStorage.getItem("sessionRunning");
 
-    if(sessionId === '123') return
+    if(running === 'true') return
+
+    window.localStorage.setItem('running', 'true')
     
-    if(!sessionId) window.localStorage.setItem("wiamSessionId", "123")
-
-    sessionId = window.localStorage.getItem("wiamSessionId");
+    const sessionId = window.localStorage.getItem("wiamSessionId");
     
-    if (sessionId != '123' && sessionId && sessionId.length > 0) {
-
+    if (sessionId && sessionId.length > 0) {
       const sessionRes = await axios({
         method: 'GET',
         url: `${BASE_URL}/v1/events`,
@@ -73,7 +81,10 @@ class WIAM {
 
       const session = await sessionRes.data
 
-      if('endTime' in session.data.data && session.data.data.endTime) window.localStorage.setItem("wiamSessionId", "")
+      if('endTime' in session.data.data && session.data.data.endTime) {
+        window.localStorage.setItem("wiamSessionId", "")
+        window.localStorage.setItem('running', 'false')
+      }
       else return;
     }
     
@@ -92,6 +103,10 @@ class WIAM {
         this.user = req.data.data;
 
         window.localStorage.setItem("wiamUserId", this.user.id)
+        this.communicateToServiceWorker({
+          key: "wiamSessionId",
+          value: this.user.id
+        })
       } catch (e) {
         const req = await axios({
           url: `${BASE_URL}/v1/iam`,
@@ -104,6 +119,10 @@ class WIAM {
 
         this.user = req.data.data;
         window.localStorage.setItem("wiamUserId", this.user.id);
+        this.communicateToServiceWorker({
+          key: "wiamSessionId",
+          value: this.user.id
+        })
       }
     }
 
@@ -117,6 +136,7 @@ class WIAM {
 
     if (window && window.localStorage) {
       window.localStorage.setItem("wiamSessionId", data.data.id);
+      window.localStorage.setItem('running', 'false')
     }
   }
 
@@ -200,9 +220,15 @@ class WIAM {
   }
 
   // PRIVATE
+  private communicateToServiceWorker(data: any) {
+    if(window && window.navigator) {
+      window.navigator.serviceWorker.controller.postMessage(data)
+    } else {
+      throw new Error("call this inside a browser env")
+    }
+  }
+
   private async registerEvent(event: WiamEvent) {
-    console.log(this.apiKeyVerified, this.project, this.user, "12")
-    if (!this.apiKeyVerified) throw new Error("apiKey is invalid");
     if (!this.project) return
     if (!this.user) return
 
@@ -231,18 +257,23 @@ class WIAM {
     }
   }
 
-  private async validateApiKey() {
-    if (!this.apiKey) throw new Error("apiKey should be a non-empty string");
+  private async validateApiKey(apiKey: string) {
+    // if (!this.apiKey) throw new Error("apiKey should be a non-empty string");
 
     const req = await axios({
       url: `${BASE_URL}/v1/project`,
       method: 'GET',
       params: {
-        key: this.apiKey
+        key: apiKey
       }
     })
 
     this.project = req.data.data
+
+    this.communicateToServiceWorker({
+      key: "wiamProjectId",
+      value: this.project.id
+    })
     this.apiKeyVerified = true;
   }
 }
