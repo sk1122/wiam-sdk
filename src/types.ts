@@ -6,7 +6,7 @@ export enum WiamEventName {
 } 
 
 export interface WiamEvent {
-	name: WiamEventName
+	name: WiamEventName | string
 	data: any
 }
 

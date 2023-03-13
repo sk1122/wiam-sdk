@@ -7,7 +7,7 @@ class WIAM {
   private project: any = undefined;
   private user: any = undefined;
   private apiKeyVerified = false;
-  private options: Opts = {} as Opts
+  private options: Opts | undefined = {} as Opts
   private recordingPageViews = false
 
   constructor(apiKey: string, options?: Opts) {
@@ -76,6 +76,9 @@ class WIAM {
         url: `${BASE_URL}/v1/events`,
         params: {
           id: sessionId
+        },
+        headers: {
+          'secret-key': this.apiKey
         }
       })
 
@@ -85,7 +88,18 @@ class WIAM {
         window.localStorage.setItem("wiamSessionId", "")
         window.localStorage.setItem('running', 'false')
       }
-      else return;
+      else {
+        console.log(session.data, "123")
+        this.communicateToServiceWorker({
+          key: "wiamSessionId",
+          value: session.data.iamUserId
+        })
+        this.communicateToServiceWorker({
+          key: "wiamProjectId",
+          value: session.data.projectId
+        })
+        return
+      };
     }
     
     if (!this.user) {
@@ -98,6 +112,9 @@ class WIAM {
             project: this.project.id,
             blockchains: ["SOLANA"],
           },
+          headers: {
+            'secret-key': this.apiKey
+          }
         });
 
         this.user = req.data.data;
@@ -115,6 +132,9 @@ class WIAM {
             address,
             project: this.project.id,
           },
+          headers: {
+            'secret-key': this.apiKey
+          }
         });
 
         this.user = req.data.data;
@@ -155,6 +175,9 @@ class WIAM {
         url: `${BASE_URL}/v1/events`,
         params: {
           id: sessionId
+        },
+        headers: {
+          'secret-key': this.apiKey
         }
       })
 
@@ -163,19 +186,19 @@ class WIAM {
       // alert(session.data.data.startTime);
       window.localStorage.setItem("wiamSessionId", "")
   
-  
       const data = await this.registerEvent({
-        name: WiamEventName.WALLET_REMOVED,
+        name: 'wallet_removed',
         data: {
           id: sessionId,
           address: session.data.data.address,
           startTime: session.data.data.startTime,
           endTime: new Date(),
+          iamHere: true
         },
       });
 
       return "yoyoy"
-    } catch (e) {
+    } catch (e: any) {
       console.log(e)
     }
     // }
@@ -222,33 +245,38 @@ class WIAM {
   // PRIVATE
   private communicateToServiceWorker(data: any) {
     if(window && window.navigator) {
-      window.navigator.serviceWorker.controller.postMessage(data)
+      window.navigator.serviceWorker.controller?.postMessage(data)
     } else {
       throw new Error("call this inside a browser env")
     }
   }
 
   private async registerEvent(event: WiamEvent) {
-    if (!this.project) return
+    if (!this.project || !this.apiKey) return
     if (!this.user) return
 
+    console.log(this.project, event, "!23")
     if (!event.name) throw new Error("event.name should be a non-empty string");
     try {
       const request = await axios({
         url: `${BASE_URL}/v1/events`,
         method: "POST",
         data: {
-          ...event,
+          name: event.name,
+          data: event.data,
           project: this.project.id,
           iamUser: this.user.id,
 	        blockchain: "SOLANA"
         },
+        headers: {
+          'secret-key': this.apiKey
+        }
       });
 
       if (request.status >= 400) throw new Error();
 
       return request.data;
-    } catch (e) {
+    } catch (e: any) {
       console.log(e, "12")
       if (e && e.response && e.response.data)
         throw new Error(e.response.data.error);
@@ -265,6 +293,9 @@ class WIAM {
       method: 'GET',
       params: {
         key: apiKey
+      },
+      headers: {
+        'secret-key': apiKey
       }
     })
 
