@@ -50,3 +50,11 @@ const App = () => {
 
 export default App
 ```
+
+## Open Source
+
+Project is fully opensource from frontend to backend to SDK
+
+[Frontend](https://github.com/sk1122/wiam-grizzlython)
+[Backend](https://github.com/sk1122/web3-iam)
+
